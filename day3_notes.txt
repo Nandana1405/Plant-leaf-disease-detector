@@ -1,0 +1,28 @@
+Layer Output Shapes
+
+Input: (1, 3, 224, 224)
+Conv2d       -> (1, 32, 224, 224)
+ReLU         -> (1, 32, 224, 224)
+MaxPool2d    -> (1, 32, 112, 112)
+Conv2d       -> (1, 64, 112, 112)
+ReLU         -> (1, 64, 112, 112)
+MaxPool2d    -> (1, 64, 56, 56)
+Conv2d       -> (1, 128, 56, 56)
+ReLU         -> (1, 128, 56, 56)
+AdaptiveAvgPool2d -> (1, 128, 1, 1)
+
+AdaptiveAvgPool2D converts feature maps into a fixed output size of 1×1. It helps the CNN accept different input image sizes and reduces the number of parameters before the fully connected layer, making the model more efficient.
+
+Glossary
+
+Kernel:
+A small filter that moves across an image to detect features such as edges and textures.
+
+Stride:
+The number of pixels the filter moves at each step during convolution.
+
+Padding:
+Extra pixels added around the image to preserve the output size after convolution.
+
+Feature Map:
+The output generated after applying a convolution filter to an image. It highlights important features detected by the filter.
