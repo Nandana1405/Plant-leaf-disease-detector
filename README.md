@@ -81,3 +81,21 @@ Per-class recall:
 Weighted loss was used to account for differences in class frequency.
 The balanced model achieved improved overall validation accuracy compared
 with the previous baseline.
+
+## ResNet18 Fine-Tuning
+
+ResNet18 transfer learning was implemented using a two-phase training strategy.
+
+Phase 1: The pretrained backbone was frozen and only the final classification layer was trained.
+
+Phase 2: Layer4 was unfrozen and fine-tuned using a lower learning rate.
+
+Best Validation Accuracy: 96.88%
+Best Epoch: 3
+Training Time: 7 min 21 sec
+Hardware: CPU
+
+The fine-tuned ResNet18 achieved higher validation accuracy than the scratch CNN baseline (80.63%).
+
+Model checkpoint: models/resnet18_leaf_best.pth
+Class mapping: models/class_names.json

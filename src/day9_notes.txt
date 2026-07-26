@@ -1,0 +1,38 @@
+DAY 9 - TRANSFER LEARNING CONCEPTS
+
+1. Feature Extraction / Freezing
+
+In feature extraction, the pretrained ResNet18 backbone is frozen.
+The pretrained layers keep the features learned from ImageNet, such as
+edges, shapes, textures, and patterns.
+
+Only the new classification layer is trained for our four leaf disease
+classes.
+
+Freezing is useful when:
+- The dataset is relatively small.
+- We want faster training.
+- We want to avoid overfitting.
+- The pretrained features are useful for the new dataset.
+
+
+2. Fine-Tuning
+
+In fine-tuning, some of the pretrained layers are unfrozen and trained
+on the leaf disease dataset.
+
+Usually, the final ResNet blocks are unfrozen while the earlier layers
+remain frozen.
+
+Fine-tuning is useful when:
+- We want the model to learn disease-specific features.
+- The new dataset differs from the original ImageNet dataset.
+- Feature extraction alone is not giving sufficient accuracy.
+
+Training Plan:
+Step 1: Load pretrained ResNet18.
+Step 2: Freeze the backbone.
+Step 3: Replace the final FC layer with a 4-class classifier.
+Step 4: Train the new classification head.
+Step 5: Unfreeze the final ResNet block (layer4).
+Step 6: Fine-tune it using a smaller learning rate.

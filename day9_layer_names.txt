@@ -1,0 +1,10 @@
+conv1
+bn1
+relu
+maxpool
+layer1
+layer2
+layer3
+layer4
+avgpool
+fc
