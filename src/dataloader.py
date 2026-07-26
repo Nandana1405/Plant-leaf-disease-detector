@@ -3,21 +3,14 @@ import torchvision
 from pathlib import Path
 from PIL import Image
 import torch
-from torch.utils.data import Dataset, DataLoader, random_split
-from torchvision import transforms
+from torch.utils.data import Dataset, DataLoader, Subset
 from collections import Counter
+
+from src.transforms import train_transform, val_transform
+
 
 CLASS_NAMES = ["healthy", "early_blight", "late_blight", "leaf_mold"]
 CLASS_TO_IDX = {name: i for i, name in enumerate(CLASS_NAMES)}
-
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[0.485, 0.456, 0.406],
-        std=[0.229, 0.224, 0.225]
-    ),
-])
 
 
 class LeafDiseaseDataset(Dataset):
@@ -33,7 +26,9 @@ class LeafDiseaseDataset(Dataset):
                 continue
 
             for img_path in class_dir.glob("*.jpg"):
-                self.samples.append((img_path, CLASS_TO_IDX[class_name]))
+                self.samples.append(
+                    (img_path, CLASS_TO_IDX[class_name])
+                )
 
     def __len__(self):
         return len(self.samples)
@@ -49,46 +44,93 @@ class LeafDiseaseDataset(Dataset):
         return image, label
 
 
-dataset = LeafDiseaseDataset("data/train", transform=transform)
+# Training dataset uses augmentation
+train_dataset = LeafDiseaseDataset(
+    "data/train",
+    transform=train_transform
+)
 
-labels = [label for _, label in dataset.samples]
+# Validation dataset does NOT use random augmentation
+val_dataset = LeafDiseaseDataset(
+    "data/train",
+    transform=val_transform
+)
+
+
+# Count class distribution
+labels = [label for _, label in train_dataset.samples]
 counts = Counter(labels)
 
 print("Class Distribution:")
 for class_name, idx in CLASS_TO_IDX.items():
     print(f"{class_name}: {counts[idx]} images")
 
-train_size = int(0.8 * len(dataset))
-val_size = len(dataset) - train_size
 
-train_ds, val_ds = random_split(
-    dataset,
-    [train_size, val_size],
-    generator=torch.Generator().manual_seed(42)
+# Create the same reproducible 80/20 split
+dataset_size = len(train_dataset)
+
+generator = torch.Generator().manual_seed(42)
+indices = torch.randperm(
+    dataset_size,
+    generator=generator
+).tolist()
+
+train_size = int(0.8 * dataset_size)
+
+train_indices = indices[:train_size]
+val_indices = indices[train_size:]
+
+
+# Same split, but different transforms
+train_ds = Subset(
+    train_dataset,
+    train_indices
 )
 
+val_ds = Subset(
+    val_dataset,
+    val_indices
+)
+
+
+# DataLoaders
 train_loader = DataLoader(
     train_ds,
     batch_size=32,
     shuffle=True,
-    num_workers=0
+    num_workers=0,
+    pin_memory=False
 )
 
 val_loader = DataLoader(
     val_ds,
     batch_size=32,
     shuffle=False,
-    num_workers=0
+    num_workers=0,
+    pin_memory=False
 )
 
-images, labels = next(iter(train_loader))
-print(images.shape)
 
+# Verify one training batch
+images, labels = next(iter(train_loader))
+
+print("Training batch shape:", images.shape)
+print("Training samples:", len(train_ds))
+print("Validation samples:", len(val_ds))
+
+
+# Visualize augmented training images
 grid = torchvision.utils.make_grid(images[:8], nrow=4)
 
-mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
-std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+mean = torch.tensor(
+    [0.485, 0.456, 0.406]
+).view(3, 1, 1)
 
+std = torch.tensor(
+    [0.229, 0.224, 0.225]
+).view(3, 1, 1)
+
+# Undo normalization for display
 grid = grid * std + mean
 grid = torch.clamp(grid, 0, 1)
 grid = grid.permute(1, 2, 0)
@@ -96,5 +138,5 @@ grid = grid.permute(1, 2, 0)
 plt.figure(figsize=(10, 6))
 plt.imshow(grid)
 plt.axis("off")
-plt.title("Sample Training Images")
+plt.title("Augmented Training Images")
 plt.show()

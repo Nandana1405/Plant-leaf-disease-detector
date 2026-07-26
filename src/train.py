@@ -2,44 +2,130 @@ import copy
 import os
 import matplotlib.pyplot as plt
 import torch
+
 from torch import nn, optim
 from tqdm import tqdm
+from collections import Counter
+from sklearn.metrics import recall_score
 
 from src.model import LeafDiseaseCNN
 from src.dataloader import train_loader, val_loader
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+# --------------------------------------------------
+# DEVICE
+# --------------------------------------------------
+
+device = torch.device(
+    "cuda" if torch.cuda.is_available() else "cpu"
+)
+
+print("Using device:", device)
+
+
+# --------------------------------------------------
+# MODEL
+# --------------------------------------------------
 
 model = LeafDiseaseCNN(num_classes=4).to(device)
 
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=1e-3)
+
+# --------------------------------------------------
+# CLASS WEIGHTS
+# --------------------------------------------------
+
+# Get labels only from the training split
+train_labels = [
+    train_loader.dataset.dataset.samples[i][1]
+    for i in train_loader.dataset.indices
+]
+
+class_counts = Counter(train_labels)
+
+num_classes = 4
+total_samples = len(train_labels)
+
+class_weights = [
+    total_samples / (num_classes * class_counts[i])
+    for i in range(num_classes)
+]
+
+class_weights = torch.tensor(
+    class_weights,
+    dtype=torch.float32
+).to(device)
+
+print("Training class counts:", class_counts)
+print("Class weights:", class_weights)
 
 
-def train_one_epoch(model, loader, criterion, optimizer, device):
+# --------------------------------------------------
+# LOSS + OPTIMIZER
+# --------------------------------------------------
+
+criterion = nn.CrossEntropyLoss(
+    weight=class_weights
+)
+
+optimizer = optim.Adam(
+    model.parameters(),
+    lr=1e-3
+)
+
+
+# --------------------------------------------------
+# TRAIN ONE EPOCH
+# --------------------------------------------------
+
+def train_one_epoch(
+    model,
+    loader,
+    criterion,
+    optimizer,
+    device
+):
     model.train()
 
     total_loss = 0.0
 
-    for images, labels in tqdm(loader, desc="Train"):
+    for images, labels in tqdm(
+        loader,
+        desc="Train"
+    ):
         images = images.to(device)
         labels = labels.to(device)
 
         optimizer.zero_grad()
 
         outputs = model(images)
-        loss = criterion(outputs, labels)
+
+        loss = criterion(
+            outputs,
+            labels
+        )
 
         loss.backward()
+
         optimizer.step()
 
-        total_loss += loss.item() * images.size(0)
+        total_loss += (
+            loss.item() * images.size(0)
+        )
 
     return total_loss / len(loader.dataset)
 
 
+# --------------------------------------------------
+# VALIDATION
+# --------------------------------------------------
+
 @torch.no_grad()
-def validate(model, loader, criterion, device):
+def validate(
+    model,
+    loader,
+    criterion,
+    device
+):
     model.eval()
 
     total_loss = 0.0
@@ -47,48 +133,129 @@ def validate(model, loader, criterion, device):
     total = 0
 
     for images, labels in loader:
+
         images = images.to(device)
         labels = labels.to(device)
 
         outputs = model(images)
-        loss = criterion(outputs, labels)
 
-        total_loss += loss.item() * images.size(0)
+        loss = criterion(
+            outputs,
+            labels
+        )
+
+        total_loss += (
+            loss.item() * images.size(0)
+        )
 
         preds = outputs.argmax(dim=1)
-        correct += (preds == labels).sum().item()
+
+        correct += (
+            preds == labels
+        ).sum().item()
+
         total += labels.size(0)
 
-    return total_loss / total, correct / total
+    average_loss = total_loss / total
+    accuracy = correct / total
 
+    return average_loss, accuracy
+
+
+# --------------------------------------------------
+# PER-CLASS RECALL
+# --------------------------------------------------
+
+@torch.no_grad()
+def per_class_recall(
+    model,
+    loader,
+    device
+):
+    model.eval()
+
+    all_labels = []
+    all_preds = []
+
+    for images, labels in loader:
+
+        images = images.to(device)
+        labels = labels.to(device)
+
+        outputs = model(images)
+
+        preds = outputs.argmax(dim=1)
+
+        all_labels.extend(
+            labels.cpu().numpy()
+        )
+
+        all_preds.extend(
+            preds.cpu().numpy()
+        )
+
+    recalls = recall_score(
+        all_labels,
+        all_preds,
+        labels=[0, 1, 2, 3],
+        average=None,
+        zero_division=0
+    )
+
+    return recalls
+
+
+# --------------------------------------------------
+# EARLY STOPPING SETTINGS
+# --------------------------------------------------
 
 best_val = float("inf")
-patience = 3
+
+patience = 2
+
 wait = 0
+
 best_weights = None
+
+best_epoch = 0
+best_val_acc = 0.0
+
 
 train_losses = []
 val_losses = []
 
-for epoch in range(1, 11):
+
+# --------------------------------------------------
+# TRAINING LOOP
+# --------------------------------------------------
+
+# Maximum 5 epochs.
+# Early stopping may stop training sooner.
+
+for epoch in range(1, 6):
 
     train_loss = train_one_epoch(
         model,
         train_loader,
         criterion,
         optimizer,
-        device,
+        device
     )
 
     val_loss, val_acc = validate(
         model,
         val_loader,
         criterion,
-        device,
+        device
     )
 
-    train_losses.append(train_loss)
-    val_losses.append(val_loss)
+    train_losses.append(
+        train_loss
+    )
+
+    val_losses.append(
+        val_loss
+    )
 
     print(
         f"Epoch {epoch} | "
@@ -97,37 +264,186 @@ for epoch in range(1, 11):
         f"Val Acc: {val_acc:.4f}"
     )
 
+
+    # Check whether validation loss improved
+
     if val_loss < best_val:
+
         best_val = val_loss
+
+        best_val_acc = val_acc
+
+        best_epoch = epoch
+
         wait = 0
-        best_weights = copy.deepcopy(model.state_dict())
+
+        best_weights = copy.deepcopy(
+            model.state_dict()
+        )
+
     else:
+
         wait += 1
 
+        print(
+            f"No improvement. "
+            f"Patience: {wait}/{patience}"
+        )
+
         if wait >= patience:
-            print("Early stopping triggered!")
+
+            print(
+                "Early stopping triggered!"
+            )
+
             break
 
 
+# --------------------------------------------------
+# RESTORE BEST MODEL
+# --------------------------------------------------
+
 if best_weights is not None:
-    model.load_state_dict(best_weights)
 
-os.makedirs("models", exist_ok=True)
-os.makedirs("reports", exist_ok=True)
+    model.load_state_dict(
+        best_weights
+    )
 
-torch.save(model.state_dict(), "models/leaf_cnn_best.pth")
+    print(
+        f"\nBest model restored "
+        f"from epoch {best_epoch}"
+    )
 
-plt.figure(figsize=(8, 5))
-plt.plot(train_losses, label="Train Loss")
-plt.plot(val_losses, label="Validation Loss")
+
+# --------------------------------------------------
+# PER-CLASS RECALL
+# --------------------------------------------------
+
+recalls = per_class_recall(
+    model,
+    val_loader,
+    device
+)
+
+class_names = [
+    "healthy",
+    "early_blight",
+    "late_blight",
+    "leaf_mold"
+]
+
+print("\nPer-Class Recall:")
+
+for class_name, recall in zip(
+    class_names,
+    recalls
+):
+    print(
+        f"{class_name}: "
+        f"{recall:.4f}"
+    )
+
+
+# --------------------------------------------------
+# BEST METRICS
+# --------------------------------------------------
+
+print(
+    f"\nBest Epoch: {best_epoch}"
+)
+
+print(
+    f"Best Validation Loss: "
+    f"{best_val:.4f}"
+)
+
+print(
+    f"Best Validation Accuracy: "
+    f"{best_val_acc:.4f}"
+)
+
+
+# --------------------------------------------------
+# CREATE FOLDERS
+# --------------------------------------------------
+
+os.makedirs(
+    "models",
+    exist_ok=True
+)
+
+os.makedirs(
+    "reports",
+    exist_ok=True
+)
+
+
+# --------------------------------------------------
+# SAVE BEST MODEL
+# --------------------------------------------------
+
+torch.save(
+    model.state_dict(),
+    "models/leaf_cnn_best.pth"
+)
+
+
+# --------------------------------------------------
+# SAVE TRAINING CURVE
+# --------------------------------------------------
+
+plt.figure(
+    figsize=(8, 5)
+)
+
+epochs = range(
+    1,
+    len(train_losses) + 1
+)
+
+plt.plot(
+    epochs,
+    train_losses,
+    label="Train Loss"
+)
+
+plt.plot(
+    epochs,
+    val_losses,
+    label="Validation Loss"
+)
+
 plt.xlabel("Epoch")
+
 plt.ylabel("Loss")
-plt.title("Training vs Validation Loss")
+
+plt.title(
+    "Training vs Validation Loss"
+)
+
 plt.legend()
+
 plt.grid(True)
 
-plt.savefig("reports/training_curves.png")
+plt.tight_layout()
+
+plt.savefig(
+    "reports/training_curves.png"
+)
+
 plt.show()
 
-print("Best model saved to models/leaf_cnn_best.pth")
-print("Loss curve saved to reports/training_curves.png")
+
+# --------------------------------------------------
+# FINISHED
+# --------------------------------------------------
+
+print(
+    "\nBest model saved to "
+    "models/leaf_cnn_best.pth"
+)
+
+print(
+    "Loss curve saved to "
+    "reports/training_curves.png"
+)
