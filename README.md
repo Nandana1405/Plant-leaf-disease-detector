@@ -109,3 +109,16 @@ Class mapping: models/class_names.json
 
 ResNet18 improved validation accuracy by 16.25 percentage points
 compared with the scratch CNN baseline.
+
+## CLI Inference
+
+Run prediction:
+
+```bash
+python src/predict.py --image "data/train/healthy/84cbb98b-5c2f-4367-8d78-52be491e66bd___GH_HL Leaf 336.JPG"
+
+Example Output:
+
+Prediction : healthy
+Confidence : 99.92%
+Diseased : False
