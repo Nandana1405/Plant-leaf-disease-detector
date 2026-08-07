@@ -109,6 +109,8 @@ val_loader = DataLoader(
     num_workers=0,
     pin_memory=False
 )
+from torchvision import datasets
+from torch.utils.data import DataLoader
 
 
 # Verify one training batch

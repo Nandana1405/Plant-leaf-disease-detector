@@ -99,3 +99,13 @@ The fine-tuned ResNet18 achieved higher validation accuracy than the scratch CNN
 
 Model checkpoint: models/resnet18_leaf_best.pth
 Class mapping: models/class_names.json
+
+## Model Comparison
+
+| Model | Validation Accuracy |
+|-------|--------------------|
+| Scratch CNN | 80.63% |
+| Fine-tuned ResNet18 | 96.88% |
+
+ResNet18 improved validation accuracy by 16.25 percentage points
+compared with the scratch CNN baseline.
